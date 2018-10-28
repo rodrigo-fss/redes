@@ -39,8 +39,9 @@ struct pkt {
 int A_seq = 0;
 int A_expected_ack = 0;
 
+int B_seq = -1;
 int B_expected_seq = 0;
-int rtt = 20;
+int rtt = 200000;
 int A_avaible = 1;
 struct pkt sent_pkt;
 
@@ -59,48 +60,51 @@ void A_output(struct msg message){
   if(A_avaible == 1){
     struct pkt packet;
     memmove(packet.payload, message.data, 20);
-    packet.checksum = checksum(&packet);
     packet.seqnum = A_seq;
+    packet.acknum = 0;
+    packet.checksum = checksum(&packet);
 
     tolayer3(0, packet);
-    starttimer(0, rtt);
+    starttimer(0, 200000);
+    printf("A enviou o pacote seq: %d\n", packet.seqnum);
 
     sent_pkt = packet;
     A_avaible = 0;
     A_expected_ack = A_seq;
 
   } else {
-    printf("Output de A chamado, mas nao disponivel, droppando mensagem");
+    printf("Output de A chamado, mas nao disponivel, droppando mensagem\n");
     return;
   }
 }
 
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet){
-  A_avaible = 1;
-  A_seq++;
-
   if(packet.checksum != checksum(&packet)){
-    printf("A recebeu um pacote quebrado");
+    printf("A recebeu um pacote corrompido\n");
+    printf("Reenviando pacote seq: %d", packet.seqnum);
+    tolayer3(0, sent_pkt);
     return;
   }
-  printf("A recebeu ACK numero: %d", packet.acknum);
+  printf("A recebeu ACK numero: %d\n", packet.acknum);
   if(packet.acknum == A_expected_ack){
     stoptimer(0);
-    printf("A recebeu o pacote correto");
+    printf("A recebeu o ACK correto\n");
+    A_avaible = 1;
+    A_seq++;
   } else {
-    printf("A recebeu NACK, reenviando");
+    printf("A recebeu NACK, reenviando seq: %dzn", packet.seqnum);
     tolayer3(0, sent_pkt);
-    starttimer(0, rtt);
+    //starttimer(0, rtt);
   }
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt(){
-  printf("Interrupcao por tempo, reenviando ultimo pacote");
+  printf("Interrupcao por tempo, reenviando ultimo pacote\n");
   //reenvia pacote
   tolayer3(0, sent_pkt);
-  starttimer(0, rtt);
+  starttimer(0, 200000);
 }
 
 /* the following routine will be called once (only) before any other */
@@ -112,26 +116,36 @@ void A_init(){
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 void B_output(){
 }
+
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet){
   int indicador_sucesso = 1;
   if(packet.checksum != checksum(&packet)){
-    printf("B recebeu um pacote corrompido enviando NAK numero: %d", B_expected_seq);
+    printf("B recebeu um pacote corrompido enviando NAK numero: %d\n", B_seq);
     indicador_sucesso = 0;
   }
   if(packet.seqnum != B_expected_seq){
-    printf("B recebeu um pacote fora de ordem, enviando NAK numero: %d", B_expected_seq);
+    printf("B recebeu um pacote fora de ordem, enviando NAK numero: %d\n", B_seq);
     indicador_sucesso = 0;
   }
   struct pkt ack;
-  ack.checksum = checksum(&ack);
-  ack.acknum = B_expected_seq;
-  tolayer3(1, ack);
 
   if(indicador_sucesso == 1){
-    printf("B recebeu corretamente o pacote seq: %d, msg: %s", packet.seqnum, packet.payload);
+    ack.seqnum = B_expected_seq + 1;;
+    ack.acknum = B_expected_seq;
+    ack.checksum = checksum(&ack);
+    tolayer3(1, ack);
+
+    printf("B recebeu corretamente o pacote seq: %d, msg: %s\nB enviou ACK: %d\n", packet.seqnum, packet.payload, ack.acknum);
     B_expected_seq++;
+    B_seq++;
     tolayer5(1, packet.payload);
+  }
+  else{
+    ack.seqnum = B_seq + 1;;
+    ack.acknum = B_seq;
+    ack.checksum = checksum(&ack);
+    tolayer3(1, ack);
   }
 }
 
@@ -322,7 +336,7 @@ init()                         /* initialize the simulator */
 /****************************************************************************/
 float jimsrand()
 {
-  double mmm = 2147483647;   /* largest int  - MACHINE DEPENDENT!!!!!!!!   */
+  double mmm = 32767;   /* largest int  - MACHINE DEPENDENT!!!!!!!!   */
   float x;                   /* individual students may need to change mmm */
   x = rand()/mmm;            /* x should be uniform in [0,1] */
   return(x);
