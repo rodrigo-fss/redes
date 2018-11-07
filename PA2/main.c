@@ -41,9 +41,10 @@ int A_expected_ack = 0;
 
 int B_seq = -1;
 int B_expected_seq = 0;
-int rtt = 200000;
+int rtt = 20000000000000000000000000000000000;
 int A_avaible = 1;
-struct pkt sent_pkt;
+struct pkt A_sent_pkt;
+struct pkt B_sent_pkt;
 
 int checksum (struct pkt *packet){
   int checksum = packet->acknum + packet->seqnum;
@@ -65,10 +66,10 @@ void A_output(struct msg message){
     packet.checksum = checksum(&packet);
 
     tolayer3(0, packet);
-    starttimer(0, 200000);
+    starttimer(0, rtt);
     printf("A enviou o pacote seq: %d\n", packet.seqnum);
 
-    sent_pkt = packet;
+    A_sent_pkt = packet;
     A_avaible = 0;
     A_expected_ack = A_seq;
 
@@ -83,7 +84,7 @@ void A_input(struct pkt packet){
   if(packet.checksum != checksum(&packet)){
     printf("A recebeu um pacote corrompido\n");
     printf("Reenviando pacote seq: %d", packet.seqnum);
-    tolayer3(0, sent_pkt);
+    tolayer3(0, A_sent_pkt);
     return;
   }
   printf("A recebeu ACK numero: %d\n", packet.acknum);
@@ -93,18 +94,18 @@ void A_input(struct pkt packet){
     A_avaible = 1;
     A_seq++;
   } else {
-    printf("A recebeu NACK, reenviando seq: %dzn", packet.seqnum);
-    tolayer3(0, sent_pkt);
-    //starttimer(0, rtt);
+    printf("A recebeu NACK, reenviando seq: %d\n", packet.seqnum);
+    tolayer3(0, A_sent_pkt);
+    starttimer(0, rtt);
   }
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt(){
-  printf("Interrupcao por tempo, reenviando ultimo pacote\n");
+  printf("Interrupcao por tempo em A, reenviando ultimo pacote\n");
   //reenvia pacote
-  tolayer3(0, sent_pkt);
-  starttimer(0, 200000);
+  tolayer3(0, A_sent_pkt);
+  //starttimer(0, rtt);
 }
 
 /* the following routine will be called once (only) before any other */
@@ -135,6 +136,8 @@ void B_input(struct pkt packet){
     ack.acknum = B_expected_seq;
     ack.checksum = checksum(&ack);
     tolayer3(1, ack);
+    B_sent_pkt = ack;
+    starttimer(1, rtt);
 
     printf("B recebeu corretamente o pacote seq: %d, msg: %s\nB enviou ACK: %d\n", packet.seqnum, packet.payload, ack.acknum);
     B_expected_seq++;
@@ -151,6 +154,9 @@ void B_input(struct pkt packet){
 
 /* called when B's timer goes off */
 void B_timerinterrupt(){
+  printf("Interrupcao por tempo em B, reenviando ultimo pacote\n");
+  //reenvia pacote
+  tolayer3(0, B_sent_pkt);
 }
 
 /* the following rouytine will be called once (only) before any other */
